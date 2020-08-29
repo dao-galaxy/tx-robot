@@ -37,15 +37,25 @@ fn main() {
     info!("{:#?}", matches);
     info!("{:#?}", decoded_config_clone);
 
-    let query_socket = decoded_config.query_socket.unwrap_or("tcp://127.0.0.1".to_string());
-    let txpool_socket = decoded_config.txpool_socket.unwrap_or("tcp://127.0.0.1".to_string());
+    let query_socket = decoded_config.query_socket.unwrap_or("tcp://127.0.0.1:9050".to_string());
+    let txpool_socket = decoded_config.txpool_socket.unwrap_or("tcp://127.0.0.1:7050".to_string());
 
     let mut accounts = accounts_vec();
-    send_random_tx(&mut accounts, query_socket.as_str(), txpool_socket.as_str());
+    send_random_tx(
+        &mut accounts,
+        query_socket.as_str(),
+        txpool_socket.as_str(),
+        decoded_config.period.unwrap_or(3),
+    );
 }
 
 
-fn send_random_tx(accounts: &mut Vec<Account>, query_socket_str: &str, txpool_socket_str: &str) {
+fn send_random_tx(
+    accounts: &mut Vec<Account>,
+    query_socket_str: &str,
+    txpool_socket_str: &str,
+    period: u64
+) {
     use rand::{thread_rng, Rng};
     let mut rng = thread_rng();
     let mut foo: usize;
@@ -70,7 +80,8 @@ fn send_random_tx(accounts: &mut Vec<Account>, query_socket_str: &str, txpool_so
         }
         zee = (count % 9 + 1) as usize;
         count += 1;
-        println!("\n\n####account[0] => account[{}]; account[{}] => account[{}].", zee, foo, bar);
+
+        println!("\n\n####account[0] => account[{}]].", zee);
 
         let sender = &accounts[0];
         let receiver = &accounts[zee];
@@ -90,8 +101,10 @@ fn send_random_tx(accounts: &mut Vec<Account>, query_socket_str: &str, txpool_so
         send_to_txpool(
             &txpool_socket,
             hex::encode(tx).as_str(),
-            3
+            period,
         );
+
+        println!("\n\n####account[{}] => account[{}].", foo, bar);
 
         let sender = &accounts[foo];
         let receiver = &accounts[bar];
@@ -111,7 +124,7 @@ fn send_random_tx(accounts: &mut Vec<Account>, query_socket_str: &str, txpool_so
         send_to_txpool(
             &txpool_socket,
             hex::encode(tx).as_str(),
-            3
+            period,
         );
     }
 }

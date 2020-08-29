@@ -11,6 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Config {
     pub log_level: Option<String>,
+    pub period: Option<u64>,
     pub query_socket: Option<String>,
     pub txpool_socket: Option<String>,
     pub accounts: Option<Vec<Account>>,

@@ -17,6 +17,12 @@ args:
       multiple: true
       about: Sets the level of verbosity
       takes_value: false
+  - period:
+      short: p
+      long: period
+      value_name: TIME-INTERVAL
+      about: Sets block duration (time interval)
+      takes_value: true
   - log:
       short: l
       long: log
