@@ -1,0 +1,26 @@
+name: tx-robot
+version: "0.1.0"
+author: Buffalo Lv <lvqinghao@163.com>
+about: Does awesome things of blockchain
+settings:
+  - ArgRequiredElseHelp
+args:
+  - config:
+      short: c
+      long: config
+      value_name: FILE
+      about: Sets custom config file
+      takes_value: true
+  - verbose:
+      short: v
+      long: verbose
+      multiple: true
+      about: Sets the level of verbosity
+      takes_value: false
+  - log:
+      short: l
+      long: log
+      value_name: LOG-LEVEL
+      about: Sets log level
+      takes_value: true
+      possible_values: [ debug, info, error, warn, trace ]
