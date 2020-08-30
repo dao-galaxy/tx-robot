@@ -92,9 +92,9 @@ fn send_random_tx(
             sender,
             1,
             Some(receiver_address),
-            U256::from(10000),
+            U256::from(100000),
             U256::from(10),
-            U256::from(24000),
+            U256::from(50000),
             hex::decode("336699").unwrap(),
 
         );
@@ -117,7 +117,7 @@ fn send_random_tx(
             Some(receiver_address),
             U256::from(100),
             U256::from(10),
-            U256::from(24000),
+            U256::from(50000),
             hex::decode("123456").unwrap(),
 
         );
@@ -142,20 +142,26 @@ fn send_to_txpool(socket : &Socket, tx : &str, seconds : u64) {
         params: foobar_bytes,
     };
     let recovered_request : IpcRequest = rlp::decode(&ipc_request.rlp_bytes()).unwrap();
-    println!("Recovered request: {:x?}", recovered_request);
+    println!("****Recovered request: {:x?}", recovered_request);
 
     socket.send(ipc_request.rlp_bytes(), 0).unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(seconds));
+    let result_rmp;
 
-    let result_rmp = socket.recv_multipart(DONTWAIT);
-    if let Ok(mut rmp) = result_rmp {
-        println!("Client received from server, Received multiparts: {:?}", rmp);
-        let foo : IpcReply = rlp::decode(&rmp.pop().unwrap()).unwrap();
-        println!("Client received from server, IpcReply decoded: {:?}", foo);
-        let bar : String = rlp::decode(&foo.result).unwrap();
-        println!("Client received from server,  Result decoded: {:?}", bar);
+    if seconds == 0 {
+        result_rmp = socket.recv_multipart(0);
     } else {
-        println!("Error: Reply Timeout");
+        std::thread::sleep(std::time::Duration::from_secs(seconds));
+        result_rmp = socket.recv_multipart(DONTWAIT);
+    }
+
+    if let Ok(mut rmp) = result_rmp {
+        println!("****Received multiparts: {:?}", rmp);
+        let foo : IpcReply = rlp::decode(&rmp.pop().unwrap()).unwrap();
+        println!("****IpcReply decoded: {:?}", foo);
+        let bar : String = rlp::decode(&foo.result).unwrap();
+        println!("****Result decoded: {:?}", bar);
+    } else {
+        println!("****Error: Reply Timeout or Terminated Unexpectedly!");
     }
 }
 
