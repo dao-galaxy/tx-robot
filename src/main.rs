@@ -60,7 +60,22 @@ fn random_pair(rng: &mut ThreadRng, low: usize, high: usize) -> (usize, usize) {
     (foo , bar)
 }
 
-fn generate_tx(query_socket: &Socket, sender: &Account, receiver: &Account) -> Vec<u8> {
+fn generate_tx_mode1(query_socket: &Socket, sender: &Account, receiver: &Account) -> Vec<u8> {
+    let receiver_address = H160::from_str(receiver.address.as_str()).unwrap();
+    let tx_ret = sign_tx(
+        &query_socket,
+        sender,
+        1,
+        Some(receiver_address),
+        U256::from(100000),
+        U256::from(10),
+        U256::from(50000),
+        hex::decode("123456").unwrap(),
+    );
+    tx_ret
+}
+
+fn generate_tx_mode2(query_socket: &Socket, sender: &Account, receiver: &Account) -> Vec<u8> {
     let receiver_address = H160::from_str(receiver.address.as_str()).unwrap();
     let tx_ret = sign_tx(
         &query_socket,
@@ -98,14 +113,15 @@ fn send_random_tx(
         count += 1;
 
         info!("\n\n####account[0] => account[{}]].", zee);
-        let tx = generate_tx(&query_socket, &accounts[0], &accounts[zee]);
-        // hex::encode(tx).as_str();
+        let tx = generate_tx_mode1(&query_socket, &accounts[0], &accounts[zee]);
+        info!("{}", hex::encode(&tx).as_str());
         let mut tx_vec = vec![];
         tx_vec.push(&tx);
         send_to_txpool(&txpool_socket, &tx_vec, period);
 
         info!("\n\n####account[{}] => account[{}].", foo, bar);
-        let tx = generate_tx(&query_socket, &accounts[foo], &accounts[bar]);
+        let tx = generate_tx_mode2(&query_socket, &accounts[foo], &accounts[bar]);
+        info!("{}", hex::encode(&tx).as_str());
         let mut tx_vec = vec![];
         tx_vec.push(&tx);
         send_to_txpool(&txpool_socket, &tx_vec, period);
