@@ -14,7 +14,8 @@ use log::info;
 use std::env;
 use env_logger;
 use config::*;
-
+use rand::{thread_rng, Rng};
+use rand::prelude::ThreadRng;
 
 
 fn main() {
@@ -49,6 +50,30 @@ fn main() {
     );
 }
 
+fn random_pair(rng: &mut ThreadRng, low: usize, high: usize) -> (usize, usize) {
+    let mut foo = 0;
+    let mut bar = 0;
+    while (foo == bar) {
+        foo = rng.gen_range(low, high);
+        bar = rng.gen_range(low, high);
+    }
+    (foo , bar)
+}
+
+fn generate_tx(query_socket: &Socket, sender: &Account, receiver: &Account) -> Vec<u8> {
+    let receiver_address = H160::from_str(receiver.address.as_str()).unwrap();
+    let tx_ret = sign_tx(
+        &query_socket,
+        sender,
+        1,
+        Some(receiver_address),
+        U256::from(100),
+        U256::from(10),
+        U256::from(50000),
+        hex::decode("123456").unwrap(),
+    );
+    tx_ret
+}
 
 fn send_random_tx(
     accounts: &mut Vec<Account>,
@@ -56,11 +81,6 @@ fn send_random_tx(
     txpool_socket_str: &str,
     period: u64
 ) {
-    use rand::{thread_rng, Rng};
-    let mut rng = thread_rng();
-    let mut foo: usize;
-    let mut bar: usize;
-    let mut zee: usize;
     let context = Context::new();
     let txpool_socket = context.socket(DEALER).unwrap();
     txpool_socket.set_identity( &hex!("1234").to_vec() ).unwrap();
@@ -70,76 +90,52 @@ fn send_random_tx(
     query_socket.set_identity( &hex!("1234").to_vec() ).unwrap();
     query_socket.connect(query_socket_str).unwrap();
 
+    let mut rng = thread_rng();
     let mut count : u128 = 0;
     loop {
-        foo = 0;
-        bar = 0;
-        while (foo == bar) {
-            foo = rng.gen_range(1, 10);
-            bar = rng.gen_range(1, 10);
-        }
-        zee = (count % 9 + 1) as usize;
+        let (foo, bar) = random_pair(&mut rng, 1, 10);
+        let mut zee = (count % 9 + 1) as usize;
         count += 1;
 
         println!("\n\n####account[0] => account[{}]].", zee);
-
-        let sender = &accounts[0];
-        let receiver = &accounts[zee];
-        let receiver_address = H160::from_str(receiver.address.as_str()).unwrap();
-        let sender_address = H160::from_str(sender.address.as_str()).unwrap();
-        let tx = sign_tx(
-            &query_socket,
-            sender,
-            1,
-            Some(receiver_address),
-            U256::from(100000),
-            U256::from(10),
-            U256::from(50000),
-            hex::decode("336699").unwrap(),
-
-        );
-        send_to_txpool(
-            &txpool_socket,
-            hex::encode(tx).as_str(),
-            period,
-        );
+        let tx = generate_tx(&query_socket, &accounts[0], &accounts[zee]);
+        // hex::encode(tx).as_str();
+        let mut tx_vec = vec![];
+        tx_vec.push(&tx);
+        send_to_txpool(&txpool_socket, &tx_vec, period);
 
         println!("\n\n####account[{}] => account[{}].", foo, bar);
+        let tx = generate_tx(&query_socket, &accounts[foo], &accounts[bar]);
+        let mut tx_vec = vec![];
+        tx_vec.push(&tx);
+        send_to_txpool(&txpool_socket, &tx_vec, period);
 
-        let sender = &accounts[foo];
-        let receiver = &accounts[bar];
-        let receiver_address = H160::from_str(receiver.address.as_str()).unwrap();
-        let sender_address = H160::from_str(sender.address.as_str()).unwrap();
-        let tx = sign_tx(
-            &query_socket,
-            sender,
-            1,
-            Some(receiver_address),
-            U256::from(100),
-            U256::from(10),
-            U256::from(50000),
-            hex::decode("123456").unwrap(),
+        /*
+        println!("\n\n####account[8] => account[3].");
+        let tx = generate_tx(&query_socket, &accounts[8], &accounts[3]);
+        let mut tx_vec = vec![];
+        tx_vec.push(&tx);
+        send_to_txpool(&txpool_socket, &tx_vec, period);
+        */
 
-        );
-        send_to_txpool(
-            &txpool_socket,
-            hex::encode(tx).as_str(),
-            period,
-        );
     }
 }
 
 
-fn send_to_txpool(socket : &Socket, tx : &str, seconds : u64) {
-    let foo : UnverifiedTransaction = rlp::decode(&hex::decode(tx).unwrap()).unwrap();
-    println!("{:?}", foo);
-    let foobar_vec = vec![foo];
-    let foobar_bytes = rlp::encode_list(&foobar_vec);
+fn send_to_txpool(socket: &Socket, tx_vec: &Vec<&Vec<u8>>, seconds: u64) {
+    let mut uvtx_vec = vec![];
+    for tx in tx_vec {
+        let uvtx: UnverifiedTransaction = rlp::decode(tx).unwrap();
+        println!("{:?}", uvtx);
+        uvtx_vec.push(uvtx);
+    }
+
+    let param_bytes = rlp::encode_list(&uvtx_vec);
 
     let ipc_request = IpcRequest {
         method: "SendToTxPool".to_string(),
         id: 666,
-        params: foobar_bytes,
+        params: param_bytes,
     };
     let recovered_request : IpcRequest = rlp::decode(&ipc_request.rlp_bytes()).unwrap();
     println!("****Recovered request: {:x?}", recovered_request);
@@ -167,7 +163,7 @@ fn send_to_txpool(socket : &Socket, tx : &str, seconds : u64) {
 
 
 fn sign_tx(
-    chain_socket: &Socket,
+    query_socket: &Socket,
     account: &Account,
     chain_id: u32,
     to: Option<H160>,
@@ -177,7 +173,7 @@ fn sign_tx(
     data: Vec<u8>
 ) -> Vec<u8> {
     let addr = H160::from_str(account.address.as_str()).unwrap();
-    let (nonce, balance) = query_account_info(&chain_socket, &addr);
+    let (nonce, balance) = query_account_info(&query_socket, &addr);
     let tx = ethereum_tx_sign::RawTransaction {
         nonce,
         to,
