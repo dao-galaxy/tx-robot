@@ -4,7 +4,6 @@ use clap::{App, load_yaml, ArgMatches, Arg};
 use common_types::ipc::{IpcRequest, IpcReply, query_account_info};
 use common_types::transaction::{UnverifiedTransaction};
 use zmq::{Socket, Context, DEALER, ROUTER, DONTWAIT};
-use std::time::Duration;
 use hex_literal::hex;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::str::FromStr; // !!! Necessary for H160::from_str(address).expect("...");
@@ -16,7 +15,8 @@ use env_logger;
 use config::*;
 use rand::{thread_rng, Rng};
 use rand::prelude::ThreadRng;
-
+use std::time::{Duration, SystemTime};
+use std::thread::sleep;
 
 fn main() {
     // The YAML file is found relative to the current file, similar to how modules are found
@@ -97,21 +97,21 @@ fn send_random_tx(
         let mut zee = (count % 9 + 1) as usize;
         count += 1;
 
-        println!("\n\n####account[0] => account[{}]].", zee);
+        info!("\n\n####account[0] => account[{}]].", zee);
         let tx = generate_tx(&query_socket, &accounts[0], &accounts[zee]);
         // hex::encode(tx).as_str();
         let mut tx_vec = vec![];
         tx_vec.push(&tx);
         send_to_txpool(&txpool_socket, &tx_vec, period);
 
-        println!("\n\n####account[{}] => account[{}].", foo, bar);
+        info!("\n\n####account[{}] => account[{}].", foo, bar);
         let tx = generate_tx(&query_socket, &accounts[foo], &accounts[bar]);
         let mut tx_vec = vec![];
         tx_vec.push(&tx);
         send_to_txpool(&txpool_socket, &tx_vec, period);
 
         /*
-        println!("\n\n####account[8] => account[3].");
+        info!("\n\n####account[8] => account[3].");
         let tx = generate_tx(&query_socket, &accounts[8], &accounts[3]);
         let mut tx_vec = vec![];
         tx_vec.push(&tx);
@@ -122,42 +122,43 @@ fn send_random_tx(
 }
 
 
-fn send_to_txpool(socket: &Socket, tx_vec: &Vec<&Vec<u8>>, seconds: u64) {
+fn send_to_txpool(socket: &Socket, tx_vec: &Vec<&Vec<u8>>, sleep_secs: u64) {
     let mut uvtx_vec = vec![];
     for tx in tx_vec {
         let uvtx: UnverifiedTransaction = rlp::decode(tx).unwrap();
-        println!("{:?}", uvtx);
+        info!("{:?}", uvtx);
         uvtx_vec.push(uvtx);
     }
 
     let param_bytes = rlp::encode_list(&uvtx_vec);
 
+    let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
     let ipc_request = IpcRequest {
         method: "SendToTxPool".to_string(),
-        id: 666,
+        id: secs,
         params: param_bytes,
     };
-    let recovered_request : IpcRequest = rlp::decode(&ipc_request.rlp_bytes()).unwrap();
-    println!("****Recovered request: {:x?}", recovered_request);
+    // let recovered_request : IpcRequest = rlp::decode(&ipc_request.rlp_bytes()).unwrap();
+    // info!("****Recovered request: {:x?}", recovered_request);
 
     socket.send(ipc_request.rlp_bytes(), 0).unwrap();
     let result_rmp;
 
-    if seconds == 0 {
+    if sleep_secs == 0 {
         result_rmp = socket.recv_multipart(0);
     } else {
-        std::thread::sleep(std::time::Duration::from_secs(seconds));
+        sleep(Duration::from_secs(sleep_secs));
         result_rmp = socket.recv_multipart(DONTWAIT);
     }
 
     if let Ok(mut rmp) = result_rmp {
-        println!("****Received multiparts: {:?}", rmp);
-        let foo : IpcReply = rlp::decode(&rmp.pop().unwrap()).unwrap();
-        println!("****IpcReply decoded: {:?}", foo);
-        let bar : String = rlp::decode(&foo.result).unwrap();
-        println!("****Result decoded: {:?}", bar);
+        let reply: IpcReply = rlp::decode(&rmp.pop().unwrap()).unwrap();
+        info!("****IpcReply decoded: {:?}", reply);
+        let result : String = rlp::decode(&reply.result).unwrap();
+        info!("****Result decoded: {:?}", result);
+        assert_eq!(reply.id, secs);
     } else {
-        println!("****Error: Reply Timeout or Terminated Unexpectedly!");
+        info!("****Error: Reply Timeout or Terminated Unexpectedly!");
     }
 }
 
@@ -172,8 +173,8 @@ fn sign_tx(
     gas: U256,
     data: Vec<u8>
 ) -> Vec<u8> {
-    let addr = H160::from_str(account.address.as_str()).unwrap();
-    let (nonce, balance) = query_account_info(&query_socket, &addr);
+    let from = H160::from_str(account.address.as_str()).unwrap();
+    let (nonce, balance) = query_account_info(&query_socket, &from);
     let tx = ethereum_tx_sign::RawTransaction {
         nonce,
         to,
